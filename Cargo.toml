@@ -1,0 +1,17 @@
+[package]
+name = "raspi-cd-player"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+log = "*"
+libcdio-sys = "*"
+color-eyre = "*"
+udev = "*"
+flume = "*"
+symphonia = "0.5"
+symphonia-format-wav = "0.5"
+libpulse-binding = "2.5.0"
+libpulse-simple-binding = "2.5.0"
