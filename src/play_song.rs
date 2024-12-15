@@ -1,7 +1,7 @@
 use std::{
     fs::File,
     path::PathBuf,
-    sync::{atomic::Ordering::Relaxed, Arc, Mutex},
+    sync::{Arc, Mutex},
     time::Duration,
 };
 
@@ -17,18 +17,19 @@ use symphonia_format_wav::WavReader;
 use crate::{
     action::Action,
     output::{self, AudioOutput},
-    state::State,
+    state::PlayerState,
 };
 
 pub struct Player {
     format: WavReader,
     decoder: Box<dyn Decoder>,
     audio_output: Box<dyn AudioOutput>,
-    state: Arc<Mutex<State>>,
+    state: Arc<Mutex<PlayerState>>,
+    file: File,
 }
 
 impl Player {
-    pub fn new(state: Arc<Mutex<State>>) -> Result<Self> {
+    pub fn new(state: Arc<Mutex<PlayerState>>) -> Result<Self> {
         let mut codec_params = CodecParameters::new();
         codec_params
             .for_codec(CODEC_TYPE_PCM_S16LE)
@@ -50,7 +51,7 @@ impl Player {
         // Try to open the audio output.
         let audio_output = output::try_open(spec, 1152).unwrap();
 
-        let format = Self::get_reader(1);
+        let (file, format) = Self::get_reader(1);
 
         // song_is_ready.recv().unwrap();
         Ok(Self {
@@ -58,49 +59,30 @@ impl Player {
             decoder,
             audio_output,
             state,
+            file,
         })
     }
 
     pub fn handle(&mut self) -> Result<()> {
         loop {
-            println!("player: HERE1");
-            let lock = self.state.lock().unwrap();
-            let action = lock.action.clone();
-            drop(lock);
-            println!("player: HERE2");
-            println!("player: HERE2.2");
-            self.state.lock().unwrap().action_read.wait();
-            println!("player: HERE3");
+            let action = {
+                let lock = self.state.lock().unwrap();
+                lock.action.clone()
+            };
+
             match action {
-                Action::Play => {
+                Action::Play(track) => {
+                    (self.file, self.format) = Self::get_reader(track.into());
                     // The song finished playing by itself
                     if self.play() {
-                        let mut state = self.state.lock().unwrap();
-                        let previous = state.state_changed.swap(true, Relaxed);
-                        // The state hasn't been changed between the previous two lines
-                        if !previous {
-                            if state.track_to_play + 1 < state.total_tracks.into() {
-                                state.action = Action::Change;
-                                self.format = Self::get_reader(state.track_to_play + 1);
-                            } else {
-                                // The CD has finished
-                                state.action = Action::Stop;
-                                // Wakeup the reader thread
-                                state.changed.send(()).unwrap();
-                                // Immediately acknowledge that we have read the new action
-                                state.action_read.wait();
-                                // And exit
-                                break;
-                            }
-                        }
+                        let state = self.state.lock().unwrap();
+                        state.next_track();
                     }
                 }
-                Action::Pause => todo!(),
-                Action::Stop => break,
-                Action::Change => {
-                    self.format = Self::get_reader(self.state.lock().unwrap().track_to_play);
-                    self.state.lock().unwrap().wait_change.recv().unwrap();
+                Action::Pause(_) => {
+                    self.state.lock().unwrap().wait_for_change();
                 }
+                Action::Stop => break,
             }
         }
 
@@ -108,9 +90,13 @@ impl Player {
     }
 
     pub fn play(&mut self) -> bool {
+        // Wait until there is enough data to read
+        while self.file.metadata().unwrap().len() < 1152 * 2 {
+            std::thread::sleep(Duration::from_millis(5));
+        }
         let state_changed = self.state.lock().unwrap().state_changed.clone();
         let song_finished = loop {
-            if state_changed.load(Relaxed) {
+            if *state_changed.read().unwrap() {
                 break false;
             }
             // Get the next packet from the format reader.
@@ -130,20 +116,16 @@ impl Player {
         song_finished
     }
 
-    fn get_reader(id: usize) -> WavReader {
+    fn get_reader(id: usize) -> (File, WavReader) {
         let filename = PathBuf::from(format!("/tmp/raspi-cd-player/track{id}"));
         // wait for the file to be created
         while !filename.exists() {
             std::thread::sleep(Duration::from_millis(20));
         }
         let file = File::open(filename).unwrap();
-        // // Wait until there is enough data to read
-        // while file.metadata().unwrap().len() < 1152 * 2 {
-        //     std::thread::sleep(Duration::from_millis(20));
-        // }
-        let source = Box::new(file);
+        let source = Box::new(file.try_clone().unwrap());
         let mss = MediaSourceStream::new(source, Default::default());
         let format_opts = FormatOptions::default();
-        WavReader::try_new(mss, &format_opts).unwrap()
+        (file, WavReader::try_new(mss, &format_opts).unwrap())
     }
 }

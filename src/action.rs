@@ -1,7 +1,6 @@
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum Action {
-    Play,
-    Pause,
+    Play(u8),
+    Pause(u8),
     Stop,
-    Change,
 }

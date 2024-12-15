@@ -286,7 +286,11 @@ mod cpal {
 
             let sample_buf = SampleBuffer::<T>::new(duration, spec);
 
-            Ok(Box::new(CpalAudioOutputImpl { ring_buf_producer, sample_buf, stream }))
+            Ok(Box::new(CpalAudioOutputImpl {
+                ring_buf_producer,
+                sample_buf,
+                stream,
+            }))
         }
     }
 

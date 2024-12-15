@@ -6,12 +6,19 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-log = "*"
-libcdio-sys = "*"
+calloop = "*"
 color-eyre = "*"
-udev = "*"
+env_logger = "*"
 flume = "*"
-symphonia = "0.5"
-symphonia-format-wav = "0.5"
+libcdio-sys = "*"
 libpulse-binding = "2.5.0"
 libpulse-simple-binding = "2.5.0"
+log = "*"
+smithay-client-toolkit = { git = "https://github.com/Smithay/client-toolkit" }
+symphonia = "0.5"
+symphonia-format-wav = "0.5"
+tempfile = "*"
+udev = "*"
+wayland-client = { git = "https://github.com/Smithay/wayland-rs" }
+zbus = "*"
+
